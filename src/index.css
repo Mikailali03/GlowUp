@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+@theme {
+  --color-spa-pink: #FDF2F2;
+  --color-spa-mint: #F0F9F6;
+  --color-spa-blue: #EBF5FF;
+  --color-spa-lavender: #F5F3FF;
+  --color-spa-gold: #AF905B;
+  --color-spa-slate: #4A5568;
+  
+  --background-image-glass-gradient: linear-gradient(135deg, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0.1) 100%);
+}
+
+:root {
+  background: linear-gradient(135deg, #FDF2F2 0%, #EBF5FF 100%);
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+}
