@@ -3,6 +3,7 @@ import { StyleSheet, View, SafeAreaView, BackHandler, ActivityIndicator, Platfor
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import * as Camera from 'expo-camera';
 import * as Notifications from 'expo-notifications';
+import { SchedulableTriggerInputTypes } from 'expo-notifications';
 
 // Configure how notifications behave when app is in foreground
 Notifications.setNotificationHandler({
@@ -10,6 +11,9 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
+    // Add these two new required properties:
+    shouldShowBanner: true, 
+    shouldShowList: true,
   }),
 });
 
@@ -19,7 +23,7 @@ export default function App() {
   const webviewRef = useRef<WebView>(null);
 
   // CHANGE THIS: Your live Vercel/Netlify URL
-  const WEB_APP_URL = 'https://your-glowup-app.vercel.app'; 
+  const WEB_APP_URL = 'https://glow-up-gules.vercel.app/'; 
 
   useEffect(() => {
     (async () => {
@@ -46,27 +50,53 @@ export default function App() {
 
   // Handle Logic for scheduling daily reminders
   const scheduleReminders = async () => {
-    await Notifications.cancelAllScheduledNotificationsAsync();
+    try {
+      await Notifications.cancelAllScheduledNotificationsAsync();
 
-    // Morning Reminder (8:30 AM)
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: "Morning Glow ✨",
-        body: "Time for your morning ritual. Let's start the day with self-care.",
-      },
-      trigger: { hour: 8, minute: 30, repeats: true } as Notifications.DailyTriggerInput,
-    });
+      const IS_TEST_MODE = true; 
 
-    // Evening Reminder (8:30 PM)
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: "Evening Zen 🌙",
-        body: "Your evening ritual is ready. Time to wind down and glow.",
-      },
-      trigger: { hour: 20, minute: 30, repeats: true } as Notifications.DailyTriggerInput,
-    });
-    
-    console.log("Native: Reminders Scheduled");
+      // 1. Morning Ritual
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: "Morning Glow ✨",
+          body: "Time for your morning ritual. Let's start the day with self-love.",
+        },
+        trigger: IS_TEST_MODE 
+          ? { 
+              type: SchedulableTriggerInputTypes.TIME_INTERVAL, 
+              seconds: 10, 
+              repeats: false 
+            } 
+          : { 
+              type: SchedulableTriggerInputTypes.DAILY, 
+              hour: 8, 
+              minute: 30 
+            },
+      });
+
+      // 2. Evening Ritual
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: "Evening Zen 🌙",
+          body: "Your evening ritual is ready. Time to wind down and glow.",
+        },
+        trigger: IS_TEST_MODE 
+          ? { 
+              type: SchedulableTriggerInputTypes.TIME_INTERVAL, 
+              seconds: 20, 
+              repeats: false 
+            } 
+          : { 
+              type: SchedulableTriggerInputTypes.DAILY, 
+              hour: 20, 
+              minute: 30 
+            },
+      });
+
+      console.log(IS_TEST_MODE ? "Test Reminders Set" : "Daily Reminders Set");
+    } catch (error) {
+      console.error("Notification Error:", error);
+    }
   };
 
   const onMessage = (event: WebViewMessageEvent) => {
