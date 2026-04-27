@@ -4,6 +4,7 @@ import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import * as Camera from 'expo-camera';
 import * as Notifications from 'expo-notifications';
 import { SchedulableTriggerInputTypes } from 'expo-notifications';
+import { useCameraPermissions } from 'expo-camera';
 
 // Configure how notifications behave when app is in foreground
 Notifications.setNotificationHandler({
@@ -26,16 +27,17 @@ export default function App() {
   const WEB_APP_URL = 'https://glow-up-gules.vercel.app/'; 
 
   useEffect(() => {
+    // 2. Request permissions inside useEffect
     (async () => {
-      // Request Camera
-      if (!cameraPermission?.granted) {
+      // Handle Camera
+      if (cameraPermission && !cameraPermission.granted) {
         await requestCameraPermission();
       }
-      // Request Notifications
-      const { status } = await Notifications.requestPermissionsAsync();
-      setNotifPermission(status === 'granted');
+      // Handle Notifications
+      await Notifications.requestPermissionsAsync();
     })();
 
+    // Handle Android hardware back button
     const onBackPress = () => {
       if (webviewRef.current) {
         webviewRef.current.goBack();
@@ -48,88 +50,78 @@ export default function App() {
     return () => subscription.remove();
   }, [cameraPermission, requestCameraPermission]);
 
-  // Handle Logic for scheduling daily reminders
+  // --- LOCAL NOTIFICATION SCHEDULER ---
   const scheduleReminders = async () => {
     try {
+      // 1. Clear any previously scheduled GlowUp notifications to prevent overlapping
       await Notifications.cancelAllScheduledNotificationsAsync();
 
-      const IS_TEST_MODE = true; 
-
-      // 1. Morning Ritual
+      // 2. Schedule Morning Ritual (8:00 AM Daily)
       await Notifications.scheduleNotificationAsync({
         content: {
           title: "Morning Glow ✨",
           body: "Time for your morning ritual. Let's start the day with self-love.",
+          sound: true,
         },
-        trigger: IS_TEST_MODE 
-          ? { 
-              type: SchedulableTriggerInputTypes.TIME_INTERVAL, 
-              seconds: 10, 
-              repeats: false 
-            } 
-          : { 
-              type: SchedulableTriggerInputTypes.DAILY, 
-              hour: 8, 
-              minute: 30 
-            },
+        trigger: {
+          type: SchedulableTriggerInputTypes.DAILY,
+          hour: 8,
+          minute: 0,
+        },
       });
 
-      // 2. Evening Ritual
+      // 3. Schedule Evening Ritual (7:00 PM Daily)
+      // Note: We use 19 for 7:00 PM in 24-hour format
       await Notifications.scheduleNotificationAsync({
         content: {
           title: "Evening Zen 🌙",
           body: "Your evening ritual is ready. Time to wind down and glow.",
+          sound: true,
         },
-        trigger: IS_TEST_MODE 
-          ? { 
-              type: SchedulableTriggerInputTypes.TIME_INTERVAL, 
-              seconds: 20, 
-              repeats: false 
-            } 
-          : { 
-              type: SchedulableTriggerInputTypes.DAILY, 
-              hour: 20, 
-              minute: 30 
-            },
+        trigger: {
+          type: SchedulableTriggerInputTypes.DAILY,
+          hour: 19,
+          minute: 0,
+        },
       });
 
-      console.log(IS_TEST_MODE ? "Test Reminders Set" : "Daily Reminders Set");
+      console.log("Daily rituals scheduled for 8:00 AM and 7:00 PM local time.");
     } catch (error) {
-      console.error("Notification Error:", error);
+      console.error("Failed to schedule daily reminders:", error);
     }
   };
 
-  const onMessage = (event: WebViewMessageEvent) => {
+  // --- WEB-TO-NATIVE BRIDGE ---
+  const onMessage = (event: any) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
       if (data.type === 'SCHEDULE_REMINDERS') {
         scheduleReminders();
       }
     } catch (e) {
-      console.error("Message Error", e);
+      console.error("Bridge Error:", e);
     }
   };
+
+  const androidProps = Platform.OS === 'android' ? {
+    onPermissionRequest: (event: any) => {
+      event.request.grant();
+    }
+  } : {};
 
   return (
     <SafeAreaView style={styles.container}>
       <WebView 
         ref={webviewRef}
         source={{ uri: WEB_APP_URL }}
+        onMessage={onMessage} 
         style={styles.webview}
-        onMessage={onMessage}
-        
-        // Settings for high-end web apps
         javaScriptEnabled={true}
         domStorageEnabled={true}
         allowsInlineMediaPlayback={true}
         mediaPlaybackRequiresUserAction={false}
         originWhitelist={['*']}
-        
-        // Android specific permission granting
-        {...(Platform.OS === 'android' ? {
-          onPermissionRequest: (event: any) => event.request.grant()
-        } : {})}
-
+        {...androidProps}
         startInLoadingState={true}
         renderLoading={() => (
           <View style={styles.loading}>
@@ -147,7 +139,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#FDF2F2', 
     paddingTop: Platform.OS === 'android' ? 40 : 0,
   },
-  webview: { flex: 1, backgroundColor: 'transparent' },
+  webview: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
   loading: {
     position: 'absolute',
     height: '100%',
