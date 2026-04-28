@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -9,7 +10,13 @@ serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const { quizResults } = await req.json()
+    const { quizResults, userId } = await req.json() // Pass userId from frontend
+    
+    // 1. Setup Supabase with Service Role (to bypass RLS for background writing)
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
     const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')
     
     // FIX 1: Use the current stable production model ID
@@ -33,45 +40,30 @@ serve(async (req: Request) => {
       }
     `;
 
-    const response = await fetch(url, {
+    const aiRes = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        // FIX 2: Use generationConfig to FORCE JSON output. 
-        // This stops the AI from adding "Here is your routine:" text.
-        generationConfig: {
-          response_mime_type: "application/json"
-        }
-      })
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
     })
-
-    const data = await response.json()
     
-    // FIX 3: Better error reporting
-    if (data.error) {
-      console.error("Gemini API Error:", data.error);
-      throw new Error(data.error.message);
-    }
+    const aiData = await aiRes.json()
+    const routine = JSON.parse(aiData.candidates[0].content.parts[0].text.replace(/```json/g, '').replace(/```/g, '').trim())
 
-    if (!data.candidates || data.candidates.length === 0) {
-      throw new Error("No response generated from AI.");
-    }
+    // 3. Transform AI JSON into Table Rows
+    const allSteps = [
+      ...routine.am_routine.map((s: any) => ({ user_id: userId, step_name: s.step, product_name: s.product, why_logic: s.why, warning_note: s.warning, time_of_day: 'AM' })),
+      ...routine.pm_routine.map((s: any) => ({ user_id: userId, step_name: s.step, product_name: s.product, why_logic: s.why, warning_note: s.warning, time_of_day: 'PM' })),
+      ...routine.weekly_treatments.map((s: any) => ({ user_id: userId, step_name: s.step, product_name: s.product, time_of_day: 'Weekly' }))
+    ]
 
-    // Extract text
-    const text = data.candidates[0].content.parts[0].text;
+    // 4. Save to DB (This won't stop even if the user closes the app!)
+    await supabase.from('user_routines').insert(allSteps)
+    await supabase.from('profiles').update({ has_completed_quiz: true }).eq('id', userId)
 
-    // FIX 4: No more substring hacking needed if response_mime_type is used, 
-    // but we keep a simple parse check just in case.
-    const routineData = JSON.parse(text);
-
-    return new Response(JSON.stringify(routineData), {
+    return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200,
     })
 
   } catch (error) {
-    console.error("Function Error:", error.message);
     return new Response(JSON.stringify({ error: error.message }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 400,
